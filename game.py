@@ -73,18 +73,37 @@ class GameEngineer:
         #绑定按键
         master.bind("<Key>", self.key_handler)
     
+    # 处理方向
+    def process_dir(self, direction):
+        x, y = self.agent_position
+        if direction == 'Up':
+            self.move_agent(x, y - 1)
+        elif direction == 'Down':
+            self.move_agent(x, y + 1)
+        elif direction == 'Left':
+            self.move_agent(x - 1, y)
+        elif direction == 'Right':
+            self.move_agent(x + 1, y)
+
     # 处理键盘输入
     def key_handler(self, event):
-        x, y = self.agent_position
-        if event.keysym == 'Up':
-            self.move_agent(x, y - 1)
-        elif event.keysym == 'Down':
-            self.move_agent(x, y + 1)
-        elif event.keysym == 'Left':
-            self.move_agent(x - 1, y)
-        elif event.keysym == 'Right':
-            self.move_agent(x + 1, y)
-    
+        self.process_dir(event.keysym)
+
+    # 虚拟键盘输入：使用after来安排事件
+    def virtual_keyboard(self, event, delay=500):
+        direction_map = {'U': 'Up', 'D': 'Down', 'L': 'Left', 'R': 'Right'}
+        if isinstance(event,list):
+            for i,eventi in enumerate(event):
+                eventi = direction_map[eventi]
+                self.gui.master.after(delay*(i+1),self.process_dir,eventi)
+        else:
+            """下面这段估计会有bug，因为进不了事件循环"""
+            pass
+            # event = direction_map[event]
+            # self.process_dir(event)
+        
+            
+
     # 移动 agent
     def move_agent(self, new_x, new_y):
         if self.is_valid_move(new_x, new_y):
@@ -108,15 +127,7 @@ if __name__ == "__main__":
 
     gui = MazeGui(gameinfo)
     gc = GameEngineer(gui,gameinfo)
-
+    gc.virtual_keyboard(list("DDRRRRRR"))
     root.mainloop()
-
-            
-            
     
-    
-
-
-    
-
     
