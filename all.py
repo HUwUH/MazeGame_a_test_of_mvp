@@ -22,14 +22,14 @@ import numpy as np
 #configs
 MAZE_PATH = "./maze.txt" #地图储存路径
 PHUAN = 0.05 #地图生成过程中，敲掉墙形成环的比例 （迷宫是prim算法加随机敲掉墙完成的）。需要小于1
-DEFAULT_MAZE_WIDTH = 51 #menu界面默认的几个值
-DEFAULT_MAZE_HEIGHT = 41 
-DEFAULT_MAZE_SEED = 42
+DEFAULT_MAZE_WIDTH = 11 #menu界面默认的几个值
+DEFAULT_MAZE_HEIGHT = 11 
+DEFAULT_MAZE_SEED = 42  #minmax的agent2的初始位置也用的这个seed
 MENU_WIDTH = 400  #menu界面大小
 MENU_HEIGHT = 500
 MOVE_DELAY = 100 #自动模式agent移动等待时间，毫秒
 GENERAL_DELAY = 0 #界面跳转的一般延迟
-
+MINMAX_MAX_STEP = 1000 #minmax允许的最多步数
 
 
 
@@ -324,7 +324,6 @@ class Agent:
 
         raise ValueError("终点不可达")
     
-
     def use_greedy(self, grid: list, begin_pos=(0, 0)):
         """使用贪心搜索"""
         rows, cols = len(grid), len(grid[0])
@@ -395,10 +394,14 @@ class MazeModel:
             return True
         return False
 
-    def __is_valid_move(self, x, y):
+    def __is_valid_move(self, x, y, grid = None):
         """移动逻辑辅助"""
-        if 0 <= x < len(self.grid[0]) and 0 <= y < len(self.grid):
-            return self.grid[y][x] in ['0', '$', '@']
+        if grid:
+            ggrid = grid
+        else:
+            ggrid = self.grid
+        if 0 <= x < len(ggrid[0]) and 0 <= y < len(ggrid):
+            return ggrid[y][x] in ['0', '$', '@']
         return False
 
     def get_agent_position(self):
@@ -451,6 +454,60 @@ class MazeModel:
                 raise ValueError(f"算法错误: {e}")
         else:
             raise ValueError("没有找到对应算法")
+
+    def get_minmax_position(self):
+        """返回 
+        1.能够生成计算agent1、agent2的位置的生成器
+        2.返回 生成器，agent1初始位置(0,0)，agent2初始位置
+        """
+        grid = self.grid
+        rows = len(grid)
+        cols = len(grid[0])
+
+        # 随机生成agent2的初始position
+        tt = 0
+        random.seed(DEFAULT_MAZE_SEED)
+        while True:
+            y = random.randint(rows // 2, rows - 1)
+            x = random.randint(cols // 2, cols - 1)
+            tt +=1
+            # 检查对应点是否为0
+            if grid[y][x] == '0':
+                agent2position = (x,y)
+                break
+            if tt == 1000:
+                raise ValueError("agent2随机位置生成错误")
+
+        def position_generator(thegrid,agent1_init,agent2_init,obj:MazeModel):
+            grid = [row[:] for row in thegrid]
+            dir_map = ((0,1),(1,0),(0,-1),(-1,0))
+            agent1_pos = agent1_init
+            agent2_pos = agent2_init
+
+            while True:
+                # agent2移动
+                dir = random.randint(0,3)
+                dir = dir_map[dir]
+                x2,y2 = agent2_pos[0]+dir[0], agent2_pos[1]+dir[1]
+                if obj.__is_valid_move(x2,y2,grid) and grid[y2][x2]!='$':
+                    agent2_pos = (x2,y2)
+                # agent2作为墙
+                grid[agent2_pos[1]][agent2_pos[0]] = '1'
+                # agent1移动
+                try:
+                    _,way1 = obj.agent.use_BFS(grid,agent1_pos)
+                    agent1_pos = way1[1]
+                except ValueError as e:
+                    pass
+                except IndexError:
+                    return
+                # 地图复原
+                grid[agent2_pos[1]][agent2_pos[0]] = '0'
+                yield agent1_pos,agent2_pos
+        gen = position_generator(grid,(0,0),agent2position,self)
+        return gen,(0,0),agent2position
+
+
 
 class MazeView:
     def __init__(self, root):
@@ -515,22 +572,27 @@ class MazeView:
         height_entry = tk.Entry(self.menu_frame)
         height_entry.insert(0, str(DEFAULT_MAZE_HEIGHT))  # 设置默认高度值
         # 4.minmax
+        start_minmax_btn = tk.Button(self.menu_frame, text="MinMax", width=20)
 
         # 布局
+        # title
         title_label.pack(pady=10)
+        # 前几个按钮
         start_manual_btn.pack(pady=10)
         start_auto_btn.pack(pady=10)
         algorithm_dropdown.pack(pady=5)
         creat_map_btn.pack(pady=10)
-
+        #地图
         seed_label.pack(pady=5)
         seed_entry.pack(pady=5)
         width_label.pack(pady=5)
         width_entry.pack(pady=5)
         height_label.pack(pady=5)
         height_entry.pack(pady=5)
+        #minmax
+        start_minmax_btn.pack(pady=10)
 
-        return (start_manual_btn,start_auto_btn,creat_map_btn,
+        return (start_manual_btn,start_auto_btn,creat_map_btn,start_minmax_btn,
                 algorithm_dropdown, seed_entry, width_entry, height_entry)
 
     def init_maze(self, grid: list, init_agent_position: tuple, path_len=None, search_cost=None):
@@ -582,7 +644,7 @@ class MazeView:
             x,y = position
             self.agent2_icon = self.canvas.create_rectangle( x * self.cell_size,     y * self.cell_size,
                                                        (x+1) * self.cell_size, (y+1) * self.cell_size,
-                                                       fill="yellow")
+                                                       fill="purple")
         else:
             x,y = position
             self.canvas.coords(self.agent2_icon,
@@ -613,11 +675,13 @@ class MazeController:
         self.width_entry = None
         self.height_entry = None
 
-        manu_btn,auto_btn,map_btn,algorithm_dropdown, seed_entry, width_entry, height_entry = self.view.creat_and_show_menu()
+        manu_btn,auto_btn,map_btn,minmax_btn,\
+            algorithm_dropdown, seed_entry, width_entry, height_entry = self.view.creat_and_show_menu()
 
         manu_btn.config(command=self.start_manual_mode)
         auto_btn.config(command=self.start_auto_mode)
         map_btn.config(command=self.creat_map)
+        minmax_btn.config(command=self.start_minmax_mode)
 
         # 将下拉框和输入框存储在控制器中，以便后续访问
         self.algorithm_dropdown = algorithm_dropdown
@@ -753,6 +817,72 @@ class MazeController:
         #移动loop触发
         self.root.after(1000, move_loop)
 
+    def start_minmax_mode(self):
+        """minmax对抗agent模式"""
+         # 没有地图则退出
+        if self.model.get_grid() == None:
+            self.view.show_message("失败","当前没有地图")
+            return False
+
+        # 初始化，得到路径生成器，注意，不保证生成器不是无限循环
+        try:
+            agent12_generator,init_a1,init_a2 = self.model.get_minmax_position()
+        except Exception as e:
+            self.view.show_message("失败",f"minmax算法计算错误，信息:{e}")
+            return False
+
+        # 初始化界面
+        grid = self.model.get_grid()
+        self.view.init_maze(grid,init_a1)
+        self.view.update_or_init_agent2_position(init_a2)
+        # 操作提示
+        self.view.show_message("提示",f"minmax实时计算，不保证程序能终止，按x键随时退出")
+
+        # 闭包函数完成主循环
+        path_counter = 0
+        early_termination = False # 提前终止标志，能被handle_keypress事件修改，从而停止loop
+        def move_loop():
+            nonlocal path_counter
+            nonlocal agent12_generator
+
+            if path_counter>=MINMAX_MAX_STEP:
+                return
+            if early_termination:
+                return
+            path_counter +=1
+
+            # 行走，此处的行走由迭代器实时计算
+            try:
+                agent1_pos, agent2_pos = next(agent12_generator)
+            except StopIteration:
+                self.view.show_message("提示",f"minmax结束，按x键退出")
+                return
+            # 更新视图
+            self.view.update_agent_position(agent1_pos)   
+            self.view.update_or_init_agent2_position(agent2_pos)
+
+            #注册下一个循环
+            self.root.after(MOVE_DELAY, move_loop)
+            
+
+        # 定义需要按键触发的动作
+        def handle_keypress(event):
+            """处理键盘按下事件，只有退出
+                幸好逻辑不复杂，否则不用await会导致回调地狱吧
+            """
+            key_mapping = {'x':'x', 'X':'x'}
+            direction = key_mapping.get(event.keysym)
+            # 退出
+            if direction and direction=='x':
+                self.root.unbind("<KeyPress>")  # 解除键盘事件绑定
+                nonlocal early_termination  # 发出提前终止信号
+                early_termination = True
+                self.root.after(GENERAL_DELAY,self.backto_menu)
+
+        # 绑定按键
+        self.root.bind("<KeyPress>", handle_keypress)
+        #移动loop触发
+        self.root.after(1000, move_loop)
 
     def backto_menu(self):
         """返回目录选项"""
