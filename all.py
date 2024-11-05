@@ -30,6 +30,9 @@ MENU_HEIGHT = 500
 MOVE_DELAY = 100 #自动模式agent移动等待时间，毫秒
 GENERAL_DELAY = 0 #界面跳转的一般延迟
 MINMAX_MAX_STEP = 1000 #minmax允许的最多步数
+COLOR_BEGIN = 'blue' #出发点颜色
+COLOR_END = 'green' #结束点颜色
+COLOR_ROOT = 'pink' #经过路径颜色
 
 
 
@@ -606,7 +609,7 @@ class MazeView:
         self.root.title("x键返回菜单")
 
         # 绘制迷宫
-        color_map = {'1':'black','0':'white','@':'blue','$':'green'}
+        color_map = {'1':'black','0':'white','@':COLOR_BEGIN,'$':COLOR_END}
         for y, row in enumerate(grid):
             for x, cell in enumerate(row):
                 color = color_map[cell]
@@ -628,6 +631,22 @@ class MazeView:
         search_cost_label = tk.Label(self.up_canvas_frame, text=f"搜索访问节点总数: {search_cost if search_cost is not None else 'N/A'}")
         search_cost_label.pack(side=tk.LEFT, padx=10)
     
+    def update_root_color(self):
+        """将agent此处的位置标为粉色"""
+        # 得到位置
+        oldx, oldy = self.canvas.coords(self.agent_icon)[0:2]
+        oldx, oldy = int((oldx+1)/self.cell_size), int((oldy+1)/self.cell_size) # +1防止出问题
+        items = self.canvas.find_overlapping(oldx*self.cell_size + 1, oldy*self.cell_size + 1,
+                                (oldx+1)*self.cell_size - 1, (oldy+1)*self.cell_size - 1)
+        # 绘制
+        if not any(self.canvas.itemcget(item, "fill") == 'pink' for item in items):
+            self.canvas.create_rectangle(oldx * self.cell_size, oldy * self.cell_size,
+                                            (oldx + 1) * self.cell_size, (oldy + 1) * self.cell_size,
+                                            fill=COLOR_ROOT)
+        # 上升agent_icon
+        self.canvas.tag_raise(self.agent_icon)
+
+
     def update_agent_position(self, new_position: tuple):
         """更新agent在迷宫的位置"""
         # 更新智能体的图标位置
@@ -792,6 +811,7 @@ class MazeController:
 
             # 行走，此处的行走与Modle的信息完全无关
             new_position = path[path_counter]
+            self.view.update_root_color()
             self.view.update_agent_position(new_position)   # 更新视图
 
             #注册下一个循环

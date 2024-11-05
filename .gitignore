@@ -1,2 +1,5 @@
 maze.txt
 test.py
+Venv/
+dist/
+__pycache__/
