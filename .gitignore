@@ -3,3 +3,4 @@ test.py
 Venv/
 dist/
 __pycache__/
+maze.map

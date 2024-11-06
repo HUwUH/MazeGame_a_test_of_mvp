@@ -20,7 +20,7 @@ import random
 import numpy as np
 
 #configs
-MAZE_PATH = "./maze.txt" #地图储存路径
+MAZE_PATH = "./maze.map" #地图储存路径
 PHUAN = 0.05 #地图生成过程中，敲掉墙形成环的比例 （迷宫是prim算法加随机敲掉墙完成的）。需要小于1
 DEFAULT_MAZE_WIDTH = 11 #menu界面默认的几个值
 DEFAULT_MAZE_HEIGHT = 11 
@@ -639,7 +639,7 @@ class MazeView:
         items = self.canvas.find_overlapping(oldx*self.cell_size + 1, oldy*self.cell_size + 1,
                                 (oldx+1)*self.cell_size - 1, (oldy+1)*self.cell_size - 1)
         # 绘制
-        if not any(self.canvas.itemcget(item, "fill") == 'pink' for item in items):
+        if not any(self.canvas.itemcget(item, "fill") in (COLOR_BEGIN,COLOR_END,COLOR_ROOT) for item in items):
             self.canvas.create_rectangle(oldx * self.cell_size, oldy * self.cell_size,
                                             (oldx + 1) * self.cell_size, (oldy + 1) * self.cell_size,
                                             fill=COLOR_ROOT)
